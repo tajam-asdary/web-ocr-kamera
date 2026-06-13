@@ -3,35 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Web OCR - Kamera 1/2 Layar</title>
+    <title>Web OCR via Google Lens</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 h-screen flex flex-col justify-between font-sans p-4 overflow-hidden">
 
     <div class="w-full max-w-md mx-auto flex flex-col h-full justify-between space-y-3">
         
         <div class="text-center py-1">
-            <h1 class="text-xl font-bold text-blue-400">DocuScan Mobile</h1>
-            <p class="text-[10px] text-gray-400">Kamera diset 1/2 tinggi layar HP</p>
+            <h1 class="text-xl font-bold text-black bg-yellow-400 inline-block px-3 py-0.5 rounded-md shadow">Lens OCR Connect</h1>
+            <p class="text-[10px] text-gray-400 mt-1">Gunakan akurasi Google Lens langsung dari HP</p>
         </div>
         
         <div class="relative w-full h-[50vh] bg-black rounded-2xl overflow-hidden shadow-2xl border border-gray-800 flex items-center justify-center">
             <video id="video" class="w-full h-full object-cover" autoplay playsinline></video>
-            
             <canvas id="canvas" class="hidden"></canvas>
-            
             <img id="scanned-image" class="hidden w-full h-full object-cover" src="" alt="Hasil foto">
-
-            <div id="loading" class="hidden absolute inset-0 bg-black/70 flex flex-col items-center justify-center space-y-2 z-10">
-                <div class="w-10 h-10 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                <p class="text-xs font-medium text-blue-400">Membaca teks... <span id="progress">0%</span></p>
-            </div>
         </div>
 
-        <div class="flex-grow flex flex-col min-h-0 space-y-1">
-            <label class="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Hasil Teks:</label>
-            <textarea id="result-text" class="w-full flex-grow p-3 bg-gray-800 border border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs text-gray-200 resize-none overflow-y-auto" placeholder="Teks akan muncul di sini..." readonly></textarea>
+        <div id="instruction-box" class="flex-grow flex flex-col justify-center items-center p-4 bg-gray-800/50 border border-gray-700/50 rounded-xl text-center space-y-2">
+            <div class="text-3xl">🎯</div>
+            <h3 class="text-sm font-semibold text-gray-200">Cara Menggunakan OCR Google Lens:</h3>
+            <p class="text-xs text-gray-400 max-w-[280px]">
+                1. Foto dokumen.<br>
+                2. Klik <b>"Kirim ke Google Lens"</b>.<br>
+                3. Pilih ikon <b>Google Lens / Google</b> pada menu share HP Anda.<br>
+                4. Pilih opsi <b>"Teks"</b> di Google Lens untuk menyalin teks.
+            </p>
         </div>
         
         <div class="pb-2">
@@ -40,11 +38,11 @@
             </button>
             
             <div id="action-group" class="hidden flex gap-2">
-                <button id="btn-retry" class="w-1/2 bg-gray-700 hover:bg-gray-600 active:scale-95 text-white font-semibold py-3 rounded-xl transition text-sm">
+                <button id="btn-retry" class="w-1/3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-white font-semibold py-3 rounded-xl transition text-xs">
                     🔄 Ulangi Foto
                 </button>
-                <button id="btn-copy" class="w-1/2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-semibold py-3 rounded-xl transition text-sm">
-                    📋 Salin Teks
+                <button id="btn-lens" class="w-2/3 bg-gradient-to-r from-yellow-500 via-red-500 to-blue-600 hover:opacity-90 active:scale-95 text-white font-bold py-3 rounded-xl transition text-sm shadow-md animate-pulse">
+                    🚀 Kirim ke Google Lens
                 </button>
             </div>
         </div>
@@ -58,12 +56,10 @@
         const btnCapture = document.getElementById('btn-capture');
         const actionGroup = document.getElementById('action-group');
         const btnRetry = document.getElementById('btn-retry');
-        const btnCopy = document.getElementById('btn-copy');
-        const loading = document.getElementById('loading');
-        const progressSpan = document.getElementById('progress');
-        const resultText = document.getElementById('result-text');
+        const btnLens = document.getElementById('btn-lens');
+        let imageBlob = null; // Menyimpan file gambar untuk di-share
 
-        // Buka kamera belakang dengan resolusi tinggi
+        // Aktifkan Kamera Belakang
         async function startCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -87,66 +83,57 @@
 
         window.addEventListener('DOMContentLoaded', startCamera);
 
-        // Ambil foto berdasarkan apa yang ada di video stream
+        // Ambil Foto dan Ubah Jadi File Gambar (Blob)
         btnCapture.addEventListener('click', () => {
             const context = canvas.getContext('2d');
-            
-            // Resolusi canvas tetap tinggi agar teks tidak pecah saat di-OCR
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
             
-            scannedImage.src = dataUrl;
-            scannedImage.classList.remove('hidden');
-            video.classList.add('hidden');
-            
-            btnCapture.classList.add('hidden');
-            actionGroup.classList.remove('hidden');
-
-            const stream = video.srcObject;
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-
-            processOCR(dataUrl);
+            // Konversi ke Blob (File asli) bukan sekadar text base64
+            canvas.toBlob((blob) => {
+                imageBlob = blob;
+                const dataUrl = URL.createObjectURL(blob);
+                scannedImage.src = dataUrl;
+                scannedImage.classList.remove('hidden');
+                video.classList.add('hidden');
+                
+                btnCapture.classList.add('hidden');
+                actionGroup.classList.remove('hidden');
+                
+                // Matikan kamera sementara
+                const stream = video.srcObject;
+                if (stream) stream.getTracks().forEach(track => track.stop());
+            }, 'image/jpeg', 0.95);
         });
 
-        btnRetry.addEventListener('click', () => {
-            resultText.value = "";
-            startCamera();
-        });
+        // Ulangi Foto
+        btnRetry.addEventListener('click', startCamera);
 
-        async function processOCR(imageSrc) {
-            loading.classList.remove('hidden');
-            resultText.value = "Sedang memproses teks...";
-            
-            try {
-                const result = await Tesseract.recognize(
-                    imageSrc,
-                    'ind+eng',
-                    {
-                        logger: m => {
-                            if (m.status === 'recognizing text') {
-                                progressSpan.innerText = Math.floor(m.progress * 100) + "%";
-                            }
-                        }
-                    }
-                );
-                resultText.value = result.data.text || "Teks tidak terdeteksi.";
-            } catch (error) {
-                resultText.value = "Gagal memproses gambar.";
-                console.error(error);
-            } finally {
-                loading.classList.add('hidden');
+        // Fungsi Utama: Lempar Gambar ke Fitur Google Lens Sistem HP
+        btnLens.addEventListener('click', async () => {
+            if (!imageBlob) {
+                alert("Foto belum siap.");
+                return;
             }
-        }
 
-        btnCopy.addEventListener('click', () => {
-            if (!resultText.value || resultText.value.startsWith("Sedang")) return;
-            navigator.clipboard.writeText(resultText.value);
-            alert("Teks disalin!");
+            // Membuat file objek dari blob foto
+            const file = new File([imageBlob], "ocr-document.jpg", { type: "image/jpeg" });
+
+            // Memeriksa apakah browser HP mendukung fitur Web Share file
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({
+                        files: [file],
+                        title: 'Scan OCR',
+                        text: 'Buka dengan Google Lens untuk menyalin teks.'
+                    });
+                } catch (error) {
+                    console.log('Batal membagikan:', error);
+                }
+            } else {
+                alert("Browser HP Anda tidak mendukung Web Share API. Gunakan Chrome/Safari versi terbaru.");
+            }
         });
     </script>
 </body>
